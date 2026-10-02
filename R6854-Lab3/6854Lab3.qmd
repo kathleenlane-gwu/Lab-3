@@ -1,0 +1,345 @@
+---
+title: "6854Lab3"
+format: pdf
+editor: visual
+---
+
+## Cleaning FASTAS
+
+```{r}
+library(stringr)
+library(dplyr)
+library(tidyr)
+library(lubridate)
+
+headers <- readLines("messy_sequences.fasta")
+headers <- headers[str_starts(headers, ">")]
+print(headers)
+length(headers)
+```
+
+## My FASTA Output
+
+```{r}
+sample_id_pattern <- "([\\w-]+)"                
+organism_pattern  <- "H.\\w+\\s?\\w+s"     #og is "H(.\\w+)"           
+gene_pattern      <- "([BTE][\\w]+)" 
+
+extracted <- data.frame(
+  header    = headers,
+  sample_id = str_extract(headers, sample_id_pattern),
+  organism  = str_extract(headers, organism_pattern),
+  gene      = str_match(headers, gene_pattern)[, 2],
+  stringsAsFactors = FALSE
+)
+extracted
+```
+
+## AI FASTA Output - Claude Sonnet 5.5
+
+```{r}
+#!/usr/bin/env Rscript
+# parse_fasta.R
+# Parse a messy FASTA file (inconsistent header formats) into a table.
+# Values are pulled exactly as they appear in the header (no standardizing).
+# Base R only, no packages required.
+#
+# Usage: Rscript parse_fasta.R [input.fasta] [output.csv]
+
+args     <- commandArgs(trailingOnly = TRUE)
+in_file  <- if (length(args) >= 1) args[1] else "messy_sequences.fasta"
+out_file <- if (length(args) >= 2) args[2] else "clean_sequences.csv"
+
+# ---- helper: first capture group of a perl regex, NA if no match -----------
+extract1 <- function(x, pattern) {
+  m <- regexec(pattern, x, perl = TRUE)
+  vapply(seq_along(x), function(i) {
+    g <- regmatches(x[i], m[i])[[1]]
+    if (length(g) >= 2) g[2] else NA_character_
+  }, character(1))
+}
+
+# ---- 1. Read file and group lines into records -----------------------------
+lines <- trimws(readLines(in_file, warn = FALSE))
+lines <- lines[nzchar(lines)]
+
+is_header <- grepl("^>", lines)
+if (!any(is_header)) stop("No FASTA headers (lines starting with '>') found.")
+record_id <- cumsum(is_header)
+
+headers <- sub("^>\\s*", "", lines[is_header])   # full header, no leading '>'
+
+seq_lines <- lines[!is_header & record_id > 0]
+seq_ids   <- record_id[!is_header & record_id > 0]
+seqs      <- tapply(seq_lines, seq_ids,
+                    function(x) paste(gsub("\\s", "", x), collapse = ""))
+sequence  <- unname(seqs[as.character(seq_along(headers))])
+sequence[is.na(sequence)] <- ""
+
+# ---- 2. Sample ID (first token, exactly as written) ------------------------
+# Everything up to the first whitespace, '|' or ';'
+sample_id <- extract1(headers, "^([^\\s|;]+)")
+
+# ---- 3. Organism (exactly as written) --------------------------------------
+# (a) keyed: organism=... / organism:... / species=... / species:...
+#     value runs until the next "key=" / "key:", a '|' or ';', or end of line
+organism_key <- trimws(extract1(
+  headers,
+  "(?i)\\b(?:organism|species)\\s*[=:]\\s*(.+?)(?=\\s+\\w+\\s*[=:]|\\s*[|;]|$)"))
+
+# (b) unkeyed: recognise Homo sapiens / Homo_sapiens / H.sapiens / Hsapiens
+org_pattern <- "(?i)\\b(Homo[_ ]?sapiens|H\\.\\s?sapiens|Hsapiens)\\b"
+organism_pos <- extract1(headers, org_pattern)
+
+organism <- ifelse(is.na(organism_key), organism_pos, organism_key)
+
+# ---- 4. Gene (exactly as written) ------------------------------------------
+# (a) keyed: gene=BRCA1, gene:TP53, target=BRCA1
+gene_key <- extract1(headers, "(?i)\\b(?:gene|target)\\s*[=:]\\s*([^\\s|;]+)")
+
+# (b) positional fallback: drop the ID and organism, split what is left on
+#     | ; whitespace, and take the first token that looks like a gene symbol
+#     (capital letter, then capitals/digits, 2-10 chars; no '=' or ':').
+gene_positional <- vapply(seq_along(headers), function(i) {
+  rest   <- sub("^[^\\s|;]+", "", headers[i], perl = TRUE)   # drop ID
+  rest   <- gsub(org_pattern, " ", rest, perl = TRUE)        # drop organism
+  tokens <- strsplit(rest, "[|;[:space:]]+", perl = TRUE)[[1]]
+  hit    <- tokens[grepl("^[A-Z][A-Z0-9-]{1,9}$", tokens)]
+  if (length(hit)) hit[1] else NA_character_
+}, character(1))
+
+gene <- ifelse(is.na(gene_key), gene_positional, gene_key)
+
+# ---- 5. Assemble the table -------------------------------------------------
+clean <- data.frame(
+  header     = headers,
+  sample_id  = sample_id,
+  organism   = organism,
+  gene       = gene,
+  seq_length = nchar(sequence),
+  sequence   = sequence,
+  stringsAsFactors = FALSE
+)
+
+# ---- 6. Sanity checks ------------------------------------------------------
+for (col in c("sample_id", "organism", "gene")) {
+  bad <- which(is.na(clean[[col]]))
+  if (length(bad))
+    warning(sprintf("Could not parse '%s' for record(s): %s",
+                    col, paste(bad, collapse = ", ")))
+}
+
+print(clean[, c("sample_id", "organism", "gene", "seq_length", "header")],
+      row.names = FALSE, right = FALSE)
+
+write.csv(clean, out_file, row.names = FALSE)
+message("\nWrote ", nrow(clean), " records to ", out_file)
+```
+
+## Cleaning the Table
+
+```{r}
+samples <- read.csv("messy_samples.csv", stringsAsFactors = FALSE)
+samples[13, 'sex']
+samples[samples == ""] <- NA
+```
+
+## My Table Output
+
+```{r}
+samples2 <- samples %>%
+  mutate(
+    clean_sample_id = str_remove(
+        str_replace(sample_id, "^s", "S"),
+        "\\-"
+    ),
+    
+    clean_dob = dob %>%
+    str_replace_all("\\.", "/") %>%
+    parse_date_time(orders = c("mdy", "ymd", "dby")) %>%
+    as.Date(),
+    
+    clean_sex = sex %>%
+      str_replace("Female|f", "F") %>%
+      str_replace("m|Male", "M") %>%
+      str_replace("unknown", "U") %>%
+      replace_na("U"),
+    
+    clean_enrollment_site = str_replace(str_replace(str_replace(str_replace(str_replace(
+      enrollment_site, "ITE-", "ite "), "s", "S"), "eB", "e B"), "_a", " A"), "  ", " "
+    )) %>%
+    
+    filter(
+    str_to_lower(glucose_unit) != "mmol/l",
+    !is.na(glucose_value),
+    glucose_value != "N/A"
+    ) %>%
+  
+    mutate(
+      clean_glucose_value = str_remove(
+        glucose_value, "\\*"
+      ),
+      
+      clean_glucose_unit = str_replace(
+        glucose_unit, "MG/DL|mg/dl", "mg/dL"
+      ),
+      
+      clean_patient_name = str_replace(str_replace(
+        patient_name, "KIM", "Kim"), "DAVIS", "Davis"
+      )
+    
+    )
+
+samples2 <- samples2 %>%
+  select(
+    sample_id = clean_sample_id,
+    glucose_value = clean_glucose_value,
+    glucose_unit = clean_glucose_unit,
+    patient_name = clean_patient_name,
+    dob = clean_dob,
+    sex = clean_sex,
+    enrollment_site = clean_enrollment_site,
+    notes
+  )
+
+```
+
+## AI Table Output - Claude Sonnet 5.5
+
+```{r}
+# ------------------------------------------------------------------
+# clean_samples.R
+# Parse messy_samples.csv into a clean, consistent table using regex.
+# Base R only (no packages required).
+# ------------------------------------------------------------------
+
+# 1. Read the raw data (everything as character so nothing is silently coerced)
+ai_samples <- read.csv("messy_samples.csv",
+                    colClasses = "character",
+                    na.strings = character(0),
+                    check.names = FALSE)
+
+# Collapse runs of whitespace and trim ends ("Site  C " -> "Site C")
+clean_ws <- function(x) trimws(gsub("\\s+", " ", x))
+
+# Capitalise the first letter of each word, lowercase the rest ("KIM" -> "Kim")
+title_case <- function(x) gsub("\\b([a-z])", "\\U\\1", tolower(x), perl = TRUE)
+
+# 2. sample_id: "s-0003" / "S0003" -> "S0003" ---------------------------------
+sample_id <- toupper(clean_ws(ai_samples$sample_id))
+sample_id <- sub("^S-?(\\d+)$", "S\\1", sample_id)
+
+# 3. patient_name: "J. KIM" -> first_initial "J", last_name "Kim" -------------
+name          <- clean_ws(ai_samples$patient_name)
+name_re       <- "^([A-Za-z])\\.?\\s*(.+)$"
+has_name      <- grepl(name_re, name)
+first_initial <- ifelse(has_name, toupper(sub(name_re, "\\1", name)), NA)
+last_name     <- ifelse(has_name, title_case(sub(name_re, "\\2", name)), NA)
+
+# 4. dob -> ISO 8601 (YYYY-MM-DD) ----------------------------------------------
+# Formats found: YYYY-MM-DD | MM/DD/YYYY | MM.DD.YY | DD-Mon-YYYY
+# Slash and dot dates are treated as month-first (e.g. 12/16/1974, 11.24.53).
+# Two-digit years are placed in the most recent century that isn't in the future.
+parse_dob <- function(x, pivot_year = as.integer(format(Sys.Date(), "%Y"))) {
+  x <- trimws(x)
+  n <- length(x)
+  yr <- mo <- dy <- rep(NA_integer_, n)
+  done <- two_digit <- rep(FALSE, n)
+
+  formats <- list(
+    list(re = "^(\\d{4})-(\\d{1,2})-(\\d{1,2})$",          order = c("y", "m", "d")),
+    list(re = "^(\\d{1,2})/(\\d{1,2})/(\\d{2}|\\d{4})$",   order = c("m", "d", "y")),
+    list(re = "^(\\d{1,2})\\.(\\d{1,2})\\.(\\d{2}|\\d{4})$", order = c("m", "d", "y")),
+    list(re = "^(\\d{1,2})-([A-Za-z]{3})-(\\d{2}|\\d{4})$", order = c("d", "m", "y"))
+  )
+
+  for (f in formats) {
+    hit <- !done & grepl(f$re, x)
+    if (!any(hit)) next
+    comp <- setNames(
+      lapply(1:3, function(i) sub(f$re, paste0("\\", i), x[hit])),
+      f$order
+    )
+    mon <- comp$m
+    mon_num <- ifelse(grepl("^[A-Za-z]+$", mon),
+                      match(tolower(mon), tolower(month.abb)),
+                      suppressWarnings(as.integer(mon)))
+    two_digit[hit] <- nchar(comp$y) == 2
+    yr[hit]   <- as.integer(comp$y)
+    mo[hit]   <- as.integer(mon_num)
+    dy[hit]   <- as.integer(comp$d)
+    done[hit] <- TRUE
+  }
+
+  # Resolve two-digit years: 53 -> 1953, 02 -> 2002, etc.
+  idx <- two_digit & !is.na(yr)
+  yr[idx] <- ifelse(2000L + yr[idx] > pivot_year, 1900L + yr[idx], 2000L + yr[idx])
+
+  out <- as.Date(sprintf("%04d-%02d-%02d", yr, mo, dy), format = "%Y-%m-%d")
+  bad <- x != "" & is.na(out)
+  if (any(bad)) warning("Unparsed dates: ", paste(x[bad], collapse = ", "))
+  out
+}
+dob <- parse_dob(ai_samples$dob)
+
+# 5. sex -> Female / Male / Unknown --------------------------------------------
+s <- tolower(clean_ws(ai_samples$sex))
+sex <- ifelse(grepl("^(f|female)$", s), "Female",
+       ifelse(grepl("^(m|male)$",   s), "Male", "Unknown"))   # u, unknown, blank
+
+# 6. enrollment_site: "SITE-A", "site_a", "siteB", "Site  C " -> "Site A/B/C" ---
+site_re <- "^site[ _-]*([a-z])$"
+s <- tolower(clean_ws(ai_samples$enrollment_site))
+enrollment_site <- ifelse(grepl(site_re, s),
+                          paste("Site", toupper(sub(site_re, "\\1", s))), NA)
+
+# 7. glucose: numeric value (+ trailing "*" flag), standardise unit to mg/dL ---
+raw    <- clean_ws(ai_samples$glucose_value)
+num_re <- "^(\\d+(?:\\.\\d+)?)\\s*(\\*?)$"
+ok     <- grepl(num_re, raw, perl = TRUE)                    # "N/A" -> not ok
+value  <- as.numeric(ifelse(ok, sub(num_re, "\\1", raw, perl = TRUE), NA))
+glucose_flagged <- ok & grepl("\\*$", raw)                   # e.g. "112.3*"
+
+u <- tolower(gsub("\\s+", "", ai_samples$glucose_unit))
+unit <- ifelse(grepl("^mg/?dl$",   u), "mg/dL",
+        ifelse(grepl("^mmol/?l$",  u), "mmol/L", NA))
+
+MMOL_TO_MGDL <- 18.016                                       # 1 mmol/L glucose = 18.016 mg/dL
+glucose_mg_dl <- round(ifelse(unit == "mg/dL",  value,
+                       ifelse(unit == "mmol/L", value * MMOL_TO_MGDL, NA)), 1)
+
+# Sanity check on the standardised values (plausible blood glucose: 20-600 mg/dL)
+glucose_qc <- ifelse(is.na(glucose_mg_dl), "missing",
+              ifelse(glucose_mg_dl < 20 | glucose_mg_dl > 600, "out_of_range", "ok"))
+
+# 8. notes: blank -> NA, lowercase, trimmed -------------------------------------
+notes <- tolower(clean_ws(ai_samples$notes))
+notes[notes == ""] <- NA
+
+# 9. Assemble the clean table -----------------------------------------------------
+clean_samples <- data.frame(
+  sample_id       = sample_id,
+  first_initial   = first_initial,
+  last_name       = last_name,
+  dob             = dob,                 # Date, prints as YYYY-MM-DD
+  sex             = sex,
+  enrollment_site = enrollment_site,
+  glucose_mg_dl   = glucose_mg_dl,
+  glucose_orig_unit = unit,              # unit as originally reported
+  glucose_flagged = glucose_flagged,     # TRUE if the raw value carried a "*"
+  glucose_qc      = glucose_qc,
+  notes           = notes,
+  stringsAsFactors = FALSE
+)
+
+# Categorical columns as factors for downstream modelling/summaries
+clean_samples$sex             <- factor(clean_samples$sex, levels = c("Female", "Male", "Unknown"))
+clean_samples$enrollment_site <- factor(clean_samples$enrollment_site, levels = c("Site A", "Site B", "Site C"))
+
+# 10. Inspect and save ------------------------------------------------------------
+str(clean_samples)
+print(head(clean_samples, 10))
+print(table(clean_samples$glucose_qc, clean_samples$glucose_orig_unit, useNA = "ifany"))
+
+# write.csv(clean_samples, "clean_samples.csv", row.names = FALSE, na = "")
+```
