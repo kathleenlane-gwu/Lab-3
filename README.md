@@ -33,7 +33,4 @@ To run `6854Lab3.qmd`, you must first recreate the necessary environment. Open R
 setwd("~/Desktop/Lab-3/R6854-Lab3/")
 renv::init()
 ```
-`renv::init()` will create four options to choose from. Choose the first option, "Restore the project from the lockfile" by entering '1' into the console. Then run the following in the R console.
-```
-source("6854Lab3.qmd")
-```
+`renv::init()` will create four options to choose from. Choose the first option, "Restore the project from the lockfile" by entering '1' into the console. You can then open the .qmd file within RStudio and click the 'Render' button to see the output.
