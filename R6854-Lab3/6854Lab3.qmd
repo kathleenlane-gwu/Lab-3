@@ -202,6 +202,10 @@ samples2 <- samples2 %>%
     notes
   )
 
+head(samples2)
+
+write.csv(clean_samples, "clean_samples.csv", row.names = FALSE, na = "")
+
 ```
 
 ## AI Table Output - Claude Sonnet 5.5
@@ -338,8 +342,7 @@ clean_samples$enrollment_site <- factor(clean_samples$enrollment_site, levels = 
 
 # 10. Inspect and save ------------------------------------------------------------
 str(clean_samples)
-print(head(clean_samples, 10))
-print(table(clean_samples$glucose_qc, clean_samples$glucose_orig_unit, useNA = "ifany"))
+head(clean_samples)
 
-# write.csv(clean_samples, "clean_samples.csv", row.names = FALSE, na = "")
+write.csv(clean_samples, "ai_clean_table.csv", row.names = FALSE, na = "")
 ```
