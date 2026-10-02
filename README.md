@@ -23,7 +23,7 @@ Lab-3/
 Open the terminal on your computer and copy/paste the code below into the terminal. The `cd ~/Desktop` command tells the computer to work within your Desktop folder and will clone the repo there. The `git clone` command will clone the `Lab-3` repository using the GitHub URL. Then `cd Lab-3` enters the repository, and `ls` lets you view the files in the repo. You should see the same files from the project structure above.
 ```
 cd ~/Desktop
-git clone https://github.com/kathleenlane-gwu/hds-practical.git
+git clone https://github.com/kathleenlane-gwu/Lab-3.git
 cd Lab-3
 ls 
 ```
