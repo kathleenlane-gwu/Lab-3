@@ -10,6 +10,10 @@ Lab-3/
   ├── 6854Lab3.qmd
   ├── messy_samples.csv
   ├── messy_sequences.fasta
+  ├── ai_clean_samples.csv   
+  ├── ai_clean_sequences.csv  
+  ├── kl_clean_samples.csv  
+  ├── kl_clean_sequences.csv  
 ├── Comparison.md
 └── AI_USAGE.md
 ```
