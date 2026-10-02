@@ -38,3 +38,6 @@ setwd("~/Desktop/Lab-3/R6854-Lab3/")
 renv::init()
 ```
 `renv::init()` will create four options to choose from. Choose the first option, "Restore the project from the lockfile" by entering '1' into the console. You can then open the .qmd file within RStudio and click the 'Render' button to see the output.
+
+## Cleaned Output
+To access the cleaned sequences output, open `ai_cleaned_sequences` or `kl_cleaned_sequences` in your local file folder (Desktop\Lab-3). To access the cleaned samples output, open `ai_cleaned_samples` or `kl_cleaned_samples` in your local file folder.
