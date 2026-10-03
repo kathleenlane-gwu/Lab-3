@@ -1,55 +1,43 @@
-## AI Usage
+# AI Usage
 
-## Copilot Model
-I used the free version of Claude, Sonnet 5.5.
+## AI Models
+I used the free version of Claude, Sonnet 5.5, to create the code for the AI-assisted cleaning. Claude is generally better at generating code than my go-to AI, Copilot. I then used Copilot Chat (basic) to give me code for standardizing the date column. This is a simpler task that it can handle.
 
-## First AI Prompt
-I first asked Copilot to help me find Python code that would recreate the same visualization I made in RStudio. I am more confident about creating a visualization in R, and didn't know the Python code that would create the same output in my .ipynb file. I entered the following prompt:
-```
-ggplot(pbc,
-       aes(x = age,
-           y = platelet)) +
-  geom_point(alpha = 0.5) +
-  geom_smooth(se = FALSE) +
-  facet_wrap(~sex) +
-  labs(title = "Platelet Count Decreases with Age in Both Women and Men", x="Age",y="Platelet Count")
+## Sequences AI Prompt
+I gave Claude this prompt and attached the `messy_sequences.fasta` to create the desired sequence output:
 
-What code would mimic this output in Python
-```
-Response: If you prefer a more grammar-of-graphics style equivalent to ggplot2, use plotnine:
-```
-from plotnine import (
-    ggplot, aes, geom_point, geom_smooth,
-    facet_wrap, theme_bw, labs
-)
+* Write an R script that uses regular expressions to parse the messy file into a clean, consistent structured table (header fields split into separate columns for the FASTA case). The table should have a column for the full header, the sample id, the organism, and the gene name. 
 
-(ggplot(pbc, aes(x='age', y='platelet'))
- + geom_point(alpha=0.5)
- + geom_smooth(method='loess', se=False, color='blue')
- + facet_wrap('~sex')
- + theme_bw()
- + labs(title = "Platelet Count Decreases with Age in Both Women and Men", x="Age",y="Platelet Count")
-)
-```
+This prompt originally gave me code that standardized the output of all of the sequences. For example, all of the organisms were written as Homo Sapiens instead of including the variety of text: H.Sapiens, Hsapiens, etc. I prompted Claude again with this:
 
-## Error
-I then ran into this error while trying to run the code Copilot provided me.
-```
-ModuleNotFoundError                       Traceback (most recent call last)
-Cell In[7], line 1
-----> 1 from plotnine import (
-      2     ggplot, aes, geom_point, geom_smooth,
-      3     facet_wrap, theme_bw, labs
-      4 )
-      6 (ggplot(pbc, aes(x='age', y='platelet'))
-      7  + geom_point(alpha=0.5)
-      8  + geom_smooth(se=False)
-      9  + facet_wrap('~sex')
-     10  + theme_bw()
-     11  + labs(title = "Platelet Count Decreases with Age in Both Women and Men", x="Age",y="Platelet Count")
-     12 )
+* Rewrite the code please. The data in the fasta doesn't need to be standardized. Rather, the exact values from the fasta should be pulled (i.e. H.Sapiens instead of Homo sapiens). 
 
-ModuleNotFoundError: No module named 'plotnine'
-```
+This prompt gave me my desired output.
+
+## Samples AI Prompt
+I gave Claude this prompt and attached the `messy_samples.csv` to create the desired samples output:
+
+* Write an R script that uses regular expressions to parse the messy file into a clean, consistent structured table (standardized date format, standardized categorical values, standardized units with conversion where needed). The csv data should be read into the file under the name 'ai_samples'. 
+
+This prompt immediately gave me the code necessary for a cleaned table (though different from my cleaned table), so I did not have to follow up with any corrections or further prompts. 
+
+# Editing the Date Format
+I was unsure how to standardize the date format in the samples table, so I asked AI.
+* Prompt: Use regex to clean up this column (I included a screenshot with the varying date formats in the column).
+
 ## AI Response
-I first asked Copilot what this error meant, then I asked how to fix it. Copilot told me that Python was unable to find the `plotnine` package in the environment that was running in my notebook. I had used the terminal to import `plotnine`, entering `python3 -m pip install plotnine`. However, Copilot helped me identify that my terminal environment was different than my notebook environment. To resolve this issue, Copilot suggested I run the following code in my notebook:
+AI gave me many options, but I wanted to stick with the output that I understood the best. I chose this code.
+```
+library(dplyr)
+library(stringr)
+library(lubridate)
+
+df <- df %>%
+  mutate(
+    dob_clean = str_replace_all(dob, "\\.", "/"),
+    dob_clean = parse_date_time(
+      dob_clean,
+      orders = c("mdy", "ymd", "dby")
+    ) %>% as.Date()
+  )
+```
